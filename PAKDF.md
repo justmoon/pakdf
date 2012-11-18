@@ -16,24 +16,26 @@ Alice would like untrusted servers to provide her with repeatable entropy, but s
 
 First, Alice contacts _n_ entropy servers, sending them each _m' = mr<sup>e</sup>_ where _m_ is her low-entropy secret, _r_ is a random value (different for each server contacted) and _e_ is the server's public exponent.
 
-The entropy servers respond with ![](http://chart.apis.google.com/chart?chf=bg,s,fffff0&cht=tx&chl=s%27%20%3D%20(mr%5Ee%29%5Ed) where _d<sub>i</sub>_ is the server's private value.
+The entropy servers respond with ![s dash equals open parenthesis m times r to the e close parenthesis to the d](http://chart.apis.google.com/chart?chf=bg,s,ffffff&cht=tx&chl=s%27%20%3D%20(mr%5Ee%29%5Ed) where _d_ is the server's private value.
 
 Alice then computes each server's share of the entropy pool:
 
-![](http://chart.apis.google.com/chart?chf=bg,s,fffff0&cht=tx&chl=s_i%20%3D%20r%5E%7B-1%7D%20(mr%5Ee%29%5Ed%20%3D%20m%5Ed)
+![s equals r to the minus 1 times open parenthesis m times r to the e close parenthesis to the d equals m to the d](http://chart.apis.google.com/chart?chf=bg,s,ffffff&cht=tx&chl=s%20%3D%20r%5E%7B-1%7D%20(mr%5Ee%29%5Ed%20%3D%20m%5Ed)
 
 The reason that this is more secure than simply performing local key derivation is because the servers can impose an arbitrary performance restriction on the blind signing rounds. For example a server may restrict the number of verifications to one per second per source IP.
 
-Alice now possesses a set of private random values _s<sub>i</sub>_ that she can reproduce assuming the servers remain online. However, we would like to introduce fault tolerance such that if _s-k_ of the servers are offline or malicious, we can still reconstruct our key.
+Alice now possesses a set of private random values _s<sub>i</sub>_ that she can reproduce assuming the servers remain online. However, we would like to introduce fault tolerance such that if _n-k_ of the servers are offline or malicious, we can still reconstruct our key.
 
 
 ## Constructing Public Authentication Metadata
 
 We would like to generate a data package that can safely be made public and that allows us to:
 
-a) Remember which servers to query and their order,
-a) Determine which servers provided accurate private values and
-b) Generate the same secret even if _s-k_ of the servers are no longer available.
+&emsp;__a)__&ensp; Remember which servers to query and their order,
+
+&emsp;__b)__&ensp; Determine which servers provided accurate private values and
+
+&emsp;__c)__&ensp; Generate the same secret even if _s-k_ of the servers are no longer available.
 
 For a) we simply create a list of servers by their hostnames/IPs.
 
@@ -41,7 +43,7 @@ To accomplish b) we calculate message digests using a message authentication cod
 
 To provide fault tolerance c) we can use a threshold secret sharing scheme such as Shamir's. (Shamir, 1979) First, we calculate masking values _c<sub>0</sub>_ to _c<sub>k</sub>_. We then calculate points _P<sub>i</sub>(i, s<sub>i</sub> ^ r<sub>i</sub>)_ and with that solve a polynomial _f(x)_ of order _k-1_. We then calculate the remaining points _P<sub>i</sub>(i, f(i))_ and consequently the remaining correction values _c<sub>n-k</sub> ... c<sub>n</sub>_.
 
-  ![c i equals s i xor f of i](http://chart.apis.google.com/chart?chf=bg,s,fffff0&cht=tx&chl=c_i%20%3D%20s_i%20%5Coplus%20f(i%29)
+  ![c i equals s i xor f of i](http://chart.apis.google.com/chart?chf=bg,s,ffffff&cht=tx&chl=c_i%20%3D%20s_i%20%5Coplus%20f(i%29)
 
 Since values _s<sub>i</sub>_ are private, the correction values _c<sub>i</sub>_ do not contain any information about the polynomial and are therefore safe to publish. A malicious server can only compromise their own share of the entropy.
 
