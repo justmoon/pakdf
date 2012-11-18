@@ -103,6 +103,23 @@ Assuming adaptive rate limiting to an average of one attempt per 30 minutes per 
 
 At this speed, an eight character password containing mixed-case letters, numbers and common punctuation would take up to 131 years to recover.
 
+In practice it is unlikely that any attacker would be able to sustain the attack for that long. Even if they do this would likely mean a denial-of-service issue rather than a security issue since the authentication servers would need tremendous capacity to handle such load.
+
+
+## Denial of Service
+
+There are two types of denial of service against an entropy server:
+
+1. __Flooding the server with requests.__
+
+   The single exponentiation from a request is fairly expensive, however due to the fairly stringent rate limiting this calculation expense would only affect a very small percentage of requests.
+
+   Furthermore, due to the fault-tolerant nature of the scheme, attackers would have to successfully cause _n-(k+1)_ servers to be unavailable, which may dilute their resources somewhat, especially if different users use different sets of servers.
+
+2. __Intentionally triggering rate limits.__
+
+   As intended, the rate limits are per-IP, so clients can only trigger their own rate limits. However, the implementations must take care to prevent IP spoofing which would allow an attacker to impersonate another client and trigger their rate limit.
+
 
 ## Long-term Security/Reliability
 
