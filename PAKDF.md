@@ -31,11 +31,11 @@ Alice now possesses a set of private random values _s<sub>i</sub>_ that she can 
 
 We would like to generate a data package that can safely be made public and that allows us to:
 
-&emsp;__a)__&ensp; Remember which servers to query and their order,
+&emsp;<b>a)</b>&ensp; Remember which servers to query and their order,
 
-&emsp;__b)__&ensp; Determine which servers provided accurate private values and
+&emsp;<b>b)</b>&ensp; Determine which servers provided accurate private values and
 
-&emsp;__c)__&ensp; Generate the same secret even if _s-k_ of the servers are no longer available.
+&emsp;<b>c)</b>&ensp; Generate the same secret even if _s-k_ of the servers are no longer available.
 
 For a) we simply create a list of servers by their hostnames/IPs.
 
@@ -84,11 +84,11 @@ Online key derivation has a number of important advantages when compared to offl
 * __Rate-limiting independent of local computation resources.__
 
   With offline key derivation difficulty parameters are limited by the performance a mobile phone or even it's JavaScript engine can provide. At the same attackers have increasingly access to customized hardware and advances in parallel computing techniques.
-  
+
 * __Adaptive rate-limiting__
 
   Online key derivation can provide a further slowdown for attackers by increasing delays when faced with sustained load.
-  
+
 * __Visibility of attacks__
 
   With online attacks, it is usually easy for the hosts of entropy servers to notice that an attack is in progress. This leads to a situation similar to DDoS defense where various techniques may be available to try to stop or at least slow down the attackers.
@@ -101,10 +101,19 @@ The estimates for the largest botnets historically seem to be around the 10-30 m
 
 Assuming adaptive rate limiting to an average of one attempt per 30 minutes per IP, the number of passwords a botnet of that size would theoretically be able to try is 222,222 per second.
 
-At this speed, an eight character password containing mixed-case letters, numbers and common punctuation would take up to 131 years to recover.
+At this speed, a six character password containing mixed-case letters, numbers and common punctuation would last at most six days. An eight character password of the same type would take up to 131 years to recover.
 
-In practice it is unlikely that any attacker would be able to sustain the attack for that long. Even if they do this would likely mean a denial-of-service issue rather than a security issue since the authentication servers would need tremendous capacity to handle such load.
+In practice it is unlikely that any attacker would be able to sustain the attack for very long. The average duration for DDoS attacks in the second half of 2011 was 9.5 hours, although the longest attack lasted a full 80 days according to a report by Kaspersky. (Garnaeva et al, 2012)
 
+It should also be noted that the extreme request volume stated above is more likely to be a DoS issue then a security issue - the authentication servers would need tremendous capacity to handle such load.
+
+### Comparison with offline KDF
+
+In the scenario above we assume a botnet of 400 million nodes. We'll assume some offline KDF algorithm with parameters set such that users can still login in one second on the minimum supported mobile hardware. Further, we'll assume the average node in the botnet is about five times faster than such a device.
+
+Under these (conservative) assumptions the botnet will be able to try 2 billion passwords per second or about 100x faster than the online attack. The five character password now takes only 8 seconds to break whereas the eight character password takes 83.5 days.
+
+Note that the above scenario does not take into account attackers who have access to large amounts of unique IPs but relatively little computation power. (See section "Proof-of-work challenge")
 
 ## Denial of Service
 
@@ -120,6 +129,43 @@ There are two types of denial of service against an entropy server:
 
    As intended, the rate limits are per-IP, so clients can only trigger their own rate limits. However, the implementations must take care to prevent IP spoofing which would allow an attacker to impersonate another client and trigger their rate limit.
 
+### Proof-of-work challenge
+
+In order to reduce the impact of certain DoS-type attacks and to stop attackers with large numbers of IPs, but little computation power the entropy servers could pose clients with a proof-of-work challenge, similar to a protocol proposed by Goyal et al. (Goyal et al, 2005)
+
+Adapted for a distributed set of authentication servers, we propose a slightly different protocol.
+
+Servers publish their official `hostid`, a unique identifier based on a hash of their hostname and a minimum difficulty, e.g.
+
+    000000FFFF...
+
+The client loads this information once and caches it locally afterwards subject to an expiry date set by the server. Before starting a request to a group of entropy servers, the client generates a challenge as follows:
+
+``` protobuf
+message Challenge {
+  // Current time
+  required uint32 timestamp = 1;
+
+  // Unique ID
+  required uint256 unique = 2;
+
+  // Nonce
+  required uint32 nonce = 3;
+
+  message Server {
+    // Hash of the server hostname
+    required uint256 hostid = 1;
+  }
+
+  // List of servers to prove work to
+  repeated Server server = 4;
+}
+```
+
+Next, the client starts incrementing the nonce and hashing the package using a hashing function defined by the protocol, such as SHA256 or scrypt.
+
+When a solution meeting a given server's difficulty requirement is found, the client contacts that server with the solution challenge package. As soon as enough servers have been successfully contacted to complete the key derivation protocol, the client stops hashing.
+
 
 ## Long-term Security/Reliability
 
@@ -132,6 +178,19 @@ The data may still be compromised once advances in cryptanalysis and information
 Another option for ultimate long term security would be the use of storage providers who promise to securely dispose of data on demand or after a certain date. This could be implemented using a threshold based redundant storage scheme.
 
 
+## Advanced Security
+
+Modern login systems often employ more advanced rules to protect user accounts. For example, login attempts from an unexpected geolocation may trigger additional security checks.
+
+In principle we can implement such measures in a PAKDF scheme, with the caveat that we have to meet two extra challenges:
+
+* The entropy servers would need to collect extra information, most notably a value to distinguish users, such as a username. We do not believe this makes a big difference since for security purposes we should assume usernames to be publically known anyway.
+
+  Other values may be more sensitive such as the user's email address and cell phone number and users may not wish to share them with a set of authentication servers.
+
+* Since we are dealing with multiple servers instead of one, it may seem cumbersome to pass extra verification with each of them. However, if these steps are standardized, the client could hide much of this complexity.
+
+
 ## Storing the Authentication Package
 
 The authentication package is public and may therefore be stored in one or more databases, indexed by a globally unique key such as a username or email address.
@@ -141,6 +200,10 @@ However, to verify the authenticity/legitimacy of the authentication package in 
 
 ## References
 
-Chaum, David (1983) _Blind signatures for untraceable payments_. Advances in Cryptology Proceedings of Crypto 82 (3): 199-203
+Chaum, D. (1983) _Blind signatures for untraceable payments_. Advances in Cryptology Proceedings of Crypto 82 (3): 199-203
 
-Shamir, Adi (1979) _How to share a secret_. Communications of the ACM 22 (11): 612-613
+Garnaeva, M., Namestnikov, Y. (2012) _DDoS attacks in H2 2011_. [[link]](http://www.securelist.com/en/analysis/204792221/DDoS_attacks_in_H2_2011#p1)
+
+Goyal, V., Kumar, V., Singh, M., Abraham, A., Sanyai, S. (2005) _A new protocol to counter online dictionary attacks_. Computers & Security 25 (2): 114-120
+
+Shamir, A. (1979) _How to share a secret_. Communications of the ACM 22 (11): 612-613
