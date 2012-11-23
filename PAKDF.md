@@ -164,7 +164,18 @@ message Challenge {
 
 Next, the client starts incrementing the nonce and hashing the package using a hashing function defined by the protocol, such as SHA256 or scrypt.
 
-When a solution meeting a given server's difficulty requirement is found, the client contacts that server with the solution challenge package. As soon as enough servers have been successfully contacted to complete the key derivation protocol, the client stops hashing.
+When a solution meeting a given server's difficulty requirement is found, the client contacts that server with the solution challenge package.
+
+Servers verify the package by confirming:
+
+* The package contains their official unique `hostid` as one of the hostids listed.
+* The package does not contain any duplicate hostids.
+* The `timestamp` is in the past.
+* The `timestamp` is at most an hour in the past.
+* The `unique` ID has not been used in the last two hours.
+* The hash of the package meets the difficulty requirement.
+
+As soon as enough servers have been successfully contacted to complete the key derivation protocol, the client stops hashing.
 
 
 ## Long-term Security/Reliability
