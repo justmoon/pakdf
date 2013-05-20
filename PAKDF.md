@@ -41,7 +41,7 @@ For a) we simply create a list of servers by their hostnames/IPs.
 
 To accomplish b) we calculate message digests using a message authentication code. We use HMAC-SHA256 using _s<sub>i</sub> || m_ as the key and `PAKDF_1_0_0_VALID_ENTROPY` as the message. We store these values _HMAC<sub>i</sub>_ for all _s<sub>i</sub> (1 <= i <= n)_.
 
-To provide fault tolerance c) we can use a threshold secret sharing scheme such as Shamir's. (Shamir, 1979) First, we calculate masking values _c<sub>0</sub>_ to _c<sub>k</sub>_. We then calculate points _P<sub>i</sub>(i, s<sub>i</sub> ^ r<sub>i</sub>)_ and with that solve a polynomial _f(x)_ of order _k-1_. We then calculate the remaining points _P<sub>i</sub>(i, f(i))_ and consequently the remaining correction values _c<sub>n-k</sub> ... c<sub>n</sub>_.
+To provide fault tolerance c) we can use a threshold secret sharing scheme such as Shamir's. (Shamir, 1979) First, we calculate masking values _c<sub>0</sub>_ to _c<sub>k</sub>_. We then calculate points _P<sub>i</sub>(i, s<sub>i</sub> ^ c<sub>i</sub>)_ and with that solve a polynomial _f(x)_ of order _k-1_. We then calculate the remaining points _P<sub>i</sub>(i, f(i))_ and consequently the remaining correction values _c<sub>n-k</sub> ... c<sub>n</sub>_.
 
   ![c i equals s i xor f of i](http://chart.apis.google.com/chart?chf=bg,s,ffffff&cht=tx&chl=c_i%20%3D%20s_i%20%5Coplus%20f(i%29)
 
