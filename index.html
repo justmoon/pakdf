@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width" />
+
+  <title>Peer-assisted Key Derivation Function (PAKDF)</title>
+
+  <link rel="stylesheet" href="vendor/bootstrap/bootstrap.css">
+
+  <script src="vendor/prettify/run_prettify.js"></script>
+  <script src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS_HTML"></script>
+  <script type="text/x-mathjax-config">
+    MathJax.Hub.Config({
+      tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']]}
+    });
+  </script>
+  <style type="text/css">
+    .math {
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="row">
+    <div class="col col-lg-12">
+<h1 id="peer-assisted-key-derivation-function-pakdf">Peer-Assisted Key Derivation Function (PAKDF)</h1>
+<p class="lead">Stefan Thomas, OpenCoin Inc. &mdash; May 2013</p>
+<h2 id="abstract">Abstract</h2>
+<blockquote>
+<p>Our protocol combines Chaumian blind signatures and Shamir's Secret Sharing Scheme to create a zero-knowledge, rate limited key derivation function using <em>k-of-n</em> entropy servers. Our scheme is secure against <em>k-1</em> malicious parties and requires <em>k</em> honest parties to succeed.</p>
+</blockquote>
+<h2 id="motivation">Motivation</h2>
+<p>Alice wishes to generate a cryptographically strong key from a relatively weak password. She wants better security against offline attacks than an algorithmic key derivation function (KDF) can provide and wants to have less reliance on third parties than a single-server-based authentication scheme requires.</p>
+<h2 id="entropy-generation-phase">Entropy Generation Phase</h2>
+<p>Alice would like untrusted servers to provide her with repeatable entropy, but she doesn't want these servers to learn any information about her password. To accomplish this, she can use Chaumian blind signatures. (Chaum, 1983)</p>
+<p>First, Alice contacts <em>n</em> entropy servers, sending them each $m' = mr^e$ where <em>m</em> is her low-entropy secret, <em>r</em> is a random value (different for each server contacted) and <em>e</em> is the server's public exponent.</p>
+<p>The entropy servers respond with $s' = (mr^e)^d$ where <em>d</em> is the server's private value.</p>
+<p>Alice then computes each server's share of the entropy pool:</p>
+<p class="math">\(s = r^{-1} (mr^e)^d = m^d\)</p>
+<p>The reason that this is more secure than simply performing local key derivation is because the servers can impose an arbitrary performance restriction on the blind signing rounds. For example a server may restrict the number of verifications to one per second per source IP.</p>
+<h3 id="chosen-plaintext-attack">Chosen-plaintext attack</h3>
+<p>A naive implementation of Chaum's protocol is subject to a chosen-plaintext attack. If an attacker can factorize $m$, they need only to run the protocol once per prime factor which is a significant attack for small $m$. To make this infeasible, we recommend adding Michels et al's (1998) padding to $m$:</p>
+<p class="math">\(m' = a_1 \| \dotso \| a_t\)</p>
+<p>With</p>
+<p class="math">\(a_1 = m\\a_i = H(a_1 \| \dotso \| a_{i-1})\)</p>
+<p>For $1 &lt; i ≤ t$ and $|m'| = |n|$.</p>
+<h2 id="constructing-public-authentication-metadata">Constructing Public Authentication Metadata</h2>
+<p>Alice now possesses a set of private random values <em>s<sub>i</sub></em> that she can reproduce assuming the servers remain online. However, we would like to introduce fault tolerance such that if <em>n-k</em> of the servers are offline or malicious, she can still reconstruct her key.</p>
+<p>We would like to generate a data package that can safely be made public and that allows us to:</p>
+<p>&emsp;<b>a)</b>&ensp; Remember which servers to query and their order,</p>
+<p>&emsp;<b>b)</b>&ensp; Determine which servers provided accurate private values and</p>
+<p>&emsp;<b>c)</b>&ensp; Generate the same secret even if <em>s-k</em> of the servers are no longer available.</p>
+<p>For a) we simply create a list of servers by their hostnames/IPs.</p>
+<p>To accomplish b) we calculate message digests using a message authentication code. We use HMAC-SHA256 using <em>s<sub>i</sub> || m</em> as the key and <code>PAKDF_1_0_0_VALID_ENTROPY</code> as the message. We store these values <em>HMAC<sub>i</sub></em> for all <em>s<sub>i</sub> (1 &lt;= i &lt;= n)</em>.</p>
+<p>To provide fault tolerance c) we can use a threshold secret sharing scheme such as Shamir's. (Shamir, 1979) First, we calculate masking values <em>c<sub>1</sub></em> to <em>c<sub>k</sub></em>. We then calculate points <em>P<sub>i</sub>(i, s<sub>i</sub> ^ c<sub>i</sub>)</em> and with that solve a polynomial <em>f(x)</em> of order <em>k-1</em>. We then calculate the remaining points <em>P<sub>i</sub>(i, f(i))</em> and consequently the remaining correction values <em>c<sub>n-k</sub> ... c<sub>n</sub></em>.</p>
+<p>$c_i = s_i \oplus f(i)$</p>
+<p>Since values <em>s<sub>i</sub></em> are private, the correction values <em>c<sub>i</sub></em> do not contain any information about the polynomial and are therefore safe to publish. A malicious server can still only compromise their own share of the entropy.</p>
+<p>The final public authentication package looks as follows:</p>
+<pre><code class="prettyprint lang-proto">message AuthData {
+
+  message Server {
+    // Server hostname
+    required string host = 1;
+
+    // Correction value
+    required uint256 correction = 2;
+
+    // Verification digest
+    optional uint256 verify = 3;
+  }
+
+  repeated Server server = 1;
+}
+</code></pre>
+
+<h2 id="deriving-the-secret">Deriving the Secret</h2>
+<p>To derive the secret at runtime we first retrieve the publically available authentication package. Next, we repeat the entropy generation phase of the protocol. We then verify the returned values using the verification hashes and discard any invalid values. We can then apply the correction values, reconstruct the polynomial using the remaining values (if there are at least k of them) and derive the secret.</p>
+<p>Finally, to maintain at least the security of a classic key derivation scheme even if k or more servers are colluding/compromised we can derive a key from our original username and password and XOR it with the secret provided by this scheme. The classic key derivation can be performed while we are waiting for the entropy servers to reply to our requests.</p>
+<h2 id="brute-force-resistance">Brute-force Resistance</h2>
+<p>We're interested specifically in the security compared to classic password stretching algorithms.</p>
+<p>Online key derivation has a number of important advantages when compared to offline key derivation.</p>
+<ul>
+<li><strong>Rate-limiting independent of local computation resources.</strong></li>
+</ul>
+<p>With offline key derivation difficulty parameters are limited by the performance a mobile phone or, even worse, its JavaScript engine can provide. At the same time, attackers increasingly have access to customized hardware and advances in parallel computing technology.</p>
+<ul>
+<li><strong>Adaptive rate-limiting</strong></li>
+</ul>
+<p>Online key derivation can provide a further slowdown for attackers by increasing delays when faced with sustained load.</p>
+<ul>
+<li><strong>Visibility of attacks</strong></li>
+</ul>
+<p>With online attacks, it is usually easy for the hosts of entropy servers to notice that an attack is in progress. This leads to a situation similar to DDoS defense where various techniques may be available to try to stop or at least slow down the attackers.</p>
+<h3 id="example-calculation">Example Calculation:</h3>
+<p>The largest threat to an online key derivation scheme comes from very large botnets that are able to submit many requests without being affected very much by IP-based rate limits.</p>
+<p>The estimates for the largest botnets historically seem to be around the 10-30 million nodes. For our attack scenario we'll assume a botnet controlling 400 million nodes or about 10% of the IPv4 address space.</p>
+<p>Assuming adaptive rate limiting to an average of one attempt per 30 minutes per IP, the number of passwords a botnet of that size would theoretically be able to try is 222,222 per second.</p>
+<p>At this speed, a six character password containing mixed-case letters, numbers and common punctuation would last at most six days. An eight character password of the same type would take up to 131 years to recover.</p>
+<p>In practice it is unlikely that any attacker would be able to sustain the attack for very long. The average duration for DDoS attacks in the second half of 2011 was 9.5 hours, although the longest attack lasted a full 80 days according to a report by Kaspersky. (Garnaeva et al, 2012)</p>
+<p>It should also be noted that the extreme request volume stated above is more likely to be a DoS issue then a security issue - the authentication servers would need tremendous capacity to handle such load.</p>
+<h3 id="comparison-with-offline-kdf">Comparison with offline KDF</h3>
+<p>In the scenario above we assume a botnet of 400 million nodes. We'll assume some offline KDF algorithm with parameters set such that users can still login in one second on the minimum supported mobile hardware. Further, we'll assume the average node in the botnet is about five times faster than such a device.</p>
+<p>Under these (conservative) assumptions the botnet will be able to try 2 billion passwords per second or about 100x faster than the online attack. The five character password now takes only 8 seconds to break whereas the eight character password takes 83.5 days.</p>
+<p>Note that the above scenario does not take into account attackers who have access to large amounts of unique IPs but relatively little computation power. (See section "Proof-of-work challenge")</p>
+<h2 id="denial-of-service">Denial of Service</h2>
+<p>There are two types of denial of service against an entropy server:</p>
+<ol>
+<li><strong>Flooding the server with requests.</strong></li>
+</ol>
+<p>The single exponentiation from a request is fairly expensive, however due to the fairly stringent rate limiting this calculation expense would only affect a very small percentage of requests.</p>
+<p>Furthermore, due to the fault-tolerant nature of the scheme, attackers would have to successfully cause <em>n-(k+1)</em> servers to be unavailable, which may dilute their resources somewhat, especially if different users use different sets of servers.</p>
+<ol>
+<li><strong>Intentionally triggering rate limits.</strong></li>
+</ol>
+<p>As intended, the rate limits are per-IP, so clients can only trigger their own rate limits. However, the implementations must take care to prevent IP spoofing which would allow an attacker to impersonate another client and trigger their rate limit.</p>
+<h3 id="proof-of-work-challenge">Proof-of-work challenge</h3>
+<p>In order to reduce the impact of certain DoS-type attacks and to stop attackers with large numbers of IPs, but little computation power the entropy servers could pose clients with a proof-of-work challenge, similar to a protocol proposed by Goyal et al. (Goyal et al, 2005)</p>
+<p>Adapted for a distributed set of authentication servers, we propose a slightly different protocol.</p>
+<p>Servers publish their official <code>HostInfo</code>, which includes a unique identifier based on a hash of their hostname, e.g.</p>
+<pre><code class="protobuf">message HostInfo {
+  // Unique host identifier (based on hostname)
+  required uint256 hostid = 1;
+}
+</code></pre>
+
+<p>The client loads this information once and caches it locally afterwards subject to an expiry date set by the server. Before starting a request to a group of entropy servers, the client generates a challenge as follows:</p>
+<pre><code class="prettyprint lang-proto">message Challenge {
+  // Current time
+  required uint32 timestamp = 1;
+
+  // Unique ID
+  required uint256 unique = 2;
+
+  // Nonce
+  required uint32 nonce = 3;
+
+  message Server {
+    // Hash of the server hostname
+    required uint256 hostid = 1;
+  }
+
+  // List of servers to prove work to
+  repeated Server server = 4;
+}
+</code></pre>
+
+<p>Next, the client starts incrementing the nonce and hashing the package using a hashing function defined by the protocol, such as scrypt. When all possible nonces have been tried, a new random unique ID is generated and/or the timestamp updated and the process is restarted.</p>
+<p>The client includes the proof-of-work challenge when making a request to any of the authentication server.</p>
+<p>A server verifies the package by confirming:</p>
+<ul>
+<li>The package contains its official unique <code>hostid</code> as one of the hostids listed.</li>
+<li>The package does not contain any duplicate hostids.</li>
+<li>The <code>timestamp</code> is in the past.</li>
+<li>The <code>timestamp</code> is at most an hour in the past.</li>
+<li>The <code>unique</code> ID has not been used in the last hour.</li>
+<li>The hash of the package meets the difficulty requirement.</li>
+</ul>
+<p>If the proof-of-work does not meet the current difficulty target required for a given request, the server will respond with the correct difficulty target and the client will retry as soon as it has a challenge message that meets it. As soon as enough servers have been successfully contacted to complete the key derivation protocol, the client stops hashing.</p>
+<h2 id="long-term-securityreliability">Long-term Security/Reliability</h2>
+<p>Over longer periods of time, even carefully chosen authentication nodes may go offline or be compromised, so it is wise for us to refresh our authentication package from time to time. To do that, we simply repeat the initialization stage of the protocol with a new server list and new random values and update our authentication package.</p>
+<p>Honest authentication nodes may dispose of their private values in regular intervals, for example every five years. The goal is that the long term integrity of the private data is preserved because enough of the keys needed to decrypt it are eventually irretrievably destroyed.</p>
+<p>The data may still be compromised once advances in cryptanalysis and information technology make it feasible to brute force the encryption keys or otherwise break the underlying cryptographic primitives. This scheme is therefore only recommended as a password stretching protocol for data that requires high security and usability in the short to medium term, but can be (mostly) invalidated if required. Our motivating example is private keys in a decentralized digital currency scheme that allows users to invalidate old keys.</p>
+<p>Another option for ultimate long term security would be the use of storage providers who promise to securely dispose of data on demand or after a certain date. This could be implemented using a threshold based redundant storage scheme.</p>
+<h2 id="storing-the-authentication-package">Storing the Authentication Package</h2>
+<p>The authentication package is public and may therefore be stored in one or more databases, indexed by a globally unique key such as a username or email address.</p>
+<p>Updating the authentication package would require a signature from the very user who is using that package to authenticate.</p>
+<h2 id="advanced-security">Advanced Security</h2>
+<p>Modern login systems often employ more advanced rules to protect user accounts. For example, login attempts from an unexpected geolocation may trigger additional security checks.</p>
+<p>In principle we can implement such measures in a PAKDF scheme, with the caveat that we have to meet two extra challenges:</p>
+<ul>
+<li>The entropy servers would need to collect extra information, most notably a value to distinguish users, such as a username. We do not believe this makes a big difference since for security purposes we should assume usernames to be publicly known anyway.</li>
+</ul>
+<p>Other values may be more sensitive, such as the user's email address and cell phone number and users may not wish to share them with a set of authentication servers.</p>
+<ul>
+<li>Since we are dealing with multiple servers instead of one, it may seem cumbersome to pass extra verification with each of them. However, if these steps are standardized, the client could hide much of this complexity.</li>
+</ul>
+<h3 id="unique-usernames">Unique usernames</h3>
+<p>It is a desirable property of the system that usernames are globally unique. This is non-trivial to enforce if the set of authentication servers varies from user to user. In our motivating example, a distributed consensus network can take on the role of assigning and managing ownership of unique usernames.</p>
+<p>Alternatively, each server can enforce locally unique usernames and clients will choose a username during the initialization phase which is available on all of them.</p>
+<h3 id="account-specific-rate-limiting">Account-specific rate-limiting</h3>
+<p>In order to protect against attacks targeting specific accounts, an authentication server might add account-specific rate limiting. The rate limits for individual accounts can be very tight and can be enforced in addition to per-IP limits. Recall that all rate-limiting would be done via proof-of-work, i.e. the server would make each successive attempt more expensive until the rate of attempts is equal to or less than the desired limit.</p>
+<p>If we wish to rate-limit on a per-user basis, the server needs to have a way to prove on each request which user it is signing for. The way to accomplish this is via a partial blind signature. We employ the protocol described by Cao et al. (2005)</p>
+<h4 id="account-specific-rate-limiting">Improved RSA cryptosystem</h4>
+<p>The protocol uses the improved RSA cryptosystem first introduced by Cao (2001). We reprint the description by Cao et al (2005) here.</p>
+<p>Randomly choose two random large primes $p,q$ satisfying $p = 2p' + 1$ and $q = 2q' + 1$, where $p'$ and $q'$ are also two large primes. Let $N = p \cdot q$. Then the Euler totient function $\phi(N) = (p-1)(q-1)$. Take $a \in_R \mathbb{Z}^*_\mathbb{N}$ satisfying Jacobi symbol $(\frac{a}{N}) = -1$. Then choose $e \in \mathbb{Z}$ with</p>
+\(\gcd(e, \frac{1}{4}\phi(N))=1,1&lt;e&lt;\frac{1}{4}\phi(N).\)
+<p>And then compute $d \in \mathbb{Z}$, such that</p>
+\(ed \equiv \frac{1}{2}\left(\frac{1}{4}\phi(N)+1\right)\mod \frac{1}{4}\phi(N),1&lt;d&lt;\frac{1}{4}\phi(N).\)
+<p>The public key is $(a,e,N)$, and the private key is $d$.</p>
+<h4 id="partially-blind-signature-protocol">Partial blind signature protocol</h4>
+<p>Assume that <em>A</em> is a signer who chooses a universal hash function $H_0:\{0,1\}^*\rightarrow\mathbb{Z}^*_\mathbb{N}$ in the system. The public key of <em>A</em> is $(a,e,N,H_0)$, and the private key is $d$.</p>
+<p>Now, assume that the requester <em>B</em> wants to get the signer <em>A</em>'s blind signature on message $m$. They first agree on a common information $info$ in a predetermined way. We set $v = F(info)$. Then, they execute the issuing protocol as follows:</p>
+<ol>
+<li>The requester <em>B</em> first computes $c_1\in\{0,1\}$ such that $\left(\frac{H_0(m)}{N}\right)=(-1)^{c_1}$, which can ensure the Jacobi symbol $\left(\frac{a^{c_1}H_0(m)}{N}\right)=1$. Let $m'=a^{c_1}H_0(m)\mod N$ be the new message to be signed. Choose the blind factor $b \in \mathbb{Z}_\mathbb{N}$, satisfying $\left(\frac{b}{N}\right)=1$. <em>B</em> then computes and sends $M = b^{ev}m'\mod N$ to the signer <em>A</em>.</li>
+<li>After <em>A</em> receives the message $M$, <em>A</em> first checks $\left(\frac{M}{N}\right)=1$. If it does not hold, he terminates. Otherwise, he computes $v^{-1}$ such that $v\cdot v^{-1}\equiv 1\mod\frac{1}{4}\phi(N)$. Then he computes $sig = M^{2dv^{-1}}=(b^{ev}m')^{2dv^{-1}}=\pm bm'^{2dv^{-1}}\mod N$ and sends $sig$ to <em>B</em></li>
+<li><em>B</em> computes $sign(m)=sig/b=\pm m'^{dv^{-1}}\mod N$. Obviously, $(m,sign(m),c_1)$ is a valid signature on $m$.</li>
+</ol>
+<h4 id="adaption-for-peer-assisted-key-derivation">Adaption for peer-assisted key derivation</h4>
+<p>The public component $info$ of the message to be signed is:</p>
+<p class="math">\(info = \text{length of username} \| \text{username}\)</p>
+<p>The blinded component $m$ of the message to be signed is:</p>
+<p class="math">\(m = \text{length of username} \| \text{username} \| \text{password}\)</p>
+<h3 id="prior-successful-login-token">Prior successful login token</h3>
+<p>In the case of a DoS attack against a specific user, we want that user to be affected as little as possible. In order to do this, we award users a special token they can use to bypass any proof-of-work requirements.</p>
+<p>After a user has logged in successfully, they will sign a message using their private key and send it to the authentication server in order to prove that they have successfully decrypted their blob. As part of its response, the server can then issue a n-time-use token, e.g. a ten-time-use token which the client can store persistently and which allows it to log in, even if there is currently a DoS attacks in progress against this account which causes the proof-of-work for logging in to this specific account to be very high.</p>
+<p>In addition, we propose that when initializing a new device, clients implement a pairing protocol that allows the existing client and the new client to exchange some data, including this login token. That means that an honest user will never be affected by a DoS attack unless she logs in from a new machine without employing a pairing protocol or exhausts her n-time-use token.</p>
+<h2 id="references">References</h2>
+<p>Cao, Z. (2001) <em>A threshold key esrow scheme based on public key cryptosystem</em>. Science in China Series E: Technological Sciences 44 (4): 441-448</p>
+<p>Cao, Z., Zhu H., Lu R. (2005) <em>Provably secure robust threshold partial blind signature</em>. Science in China Series F: Information Sciences 49 (5): 604-615</p>
+<p>Chaum, D. (1983) <em>Blind signatures for untraceable payments</em>. Advances in Cryptology Proceedings of Crypto 82 (3): 199-203</p>
+<p>Garnaeva, M., Namestnikov, Y. (2012) <em>DDoS attacks in H2 2011</em>. <a href="http://www.securelist.com/en/analysis/204792221/DDoS_attacks_in_H2_2011#p1">[link]</a></p>
+<p>Goyal, V., Kumar, V., Singh, M., Abraham, A., Sanyai, S. (2005) <em>A new protocol to counter online dictionary attacks</em>. Computers &amp; Security 25 (2): 114-120</p>
+<p>Michels, M., Stadler, M., Sun H-M. (1998) <em>On the security of some variants of the RSA signature scheme</em>. European Symposium on Research in Computer Security – ES-ORICS’98: 85–96</p>
+<p>Shamir, A. (1979) <em>How to share a secret</em>. Communications of the ACM 22 (11): 612-613</p>
+    </div>
+  </div>
+</div>
