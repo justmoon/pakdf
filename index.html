@@ -28,7 +28,7 @@
 <p class="lead">Stefan Thomas, OpenCoin Inc. &mdash; May 2013</p>
 <h2 id="abstract">Abstract</h2>
 <blockquote>
-<p>Our protocol combines Chaumian blind signatures and Shamir's Secret Sharing Scheme to create a zero-knowledge, rate limited key derivation function using <em>k-of-n</em> entropy servers. Our scheme is secure against <em>k-1</em> malicious parties and requires <em>k</em> honest parties to succeed.</p>
+<p>Our protocol combines Chaumian blind signatures and Shamir's Secret Sharing Scheme to create a zero-knowledge, rate limited key derivation protocol involving <em>k-of-n</em> authentication servers. Our scheme is secure against <em>k-1</em> malicious parties and requires <em>k</em> honest parties to succeed.</p>
 </blockquote>
 <h2 id="motivation">Motivation</h2>
 <p>Alice wishes to generate a cryptographically strong key from a relatively weak password. She wants better security against offline attacks than an algorithmic key derivation function (KDF) can provide and wants to have less reliance on third parties than a single-server-based authentication scheme requires.</p>
@@ -184,9 +184,9 @@
 <h4 id="account-specific-rate-limiting">Improved RSA cryptosystem</h4>
 <p>The protocol uses the improved RSA cryptosystem first introduced by Cao (2001). We reprint the description by Cao et al (2005) here.</p>
 <p>Randomly choose two random large primes $p,q$ satisfying $p = 2p' + 1$ and $q = 2q' + 1$, where $p'$ and $q'$ are also two large primes. Let $N = p \cdot q$. Then the Euler totient function $\phi(N) = (p-1)(q-1)$. Take $a \in_R \mathbb{Z}^*_\mathbb{N}$ satisfying Jacobi symbol $(\frac{a}{N}) = -1$. Then choose $e \in \mathbb{Z}$ with</p>
-\(\gcd(e, \frac{1}{4}\phi(N))=1,1&lt;e&lt;\frac{1}{4}\phi(N).\)
+<p class="math">\(\gcd(e, \frac{1}{4}\phi(N))=1,1&lt;e&lt;\frac{1}{4}\phi(N).\)</p>
 <p>And then compute $d \in \mathbb{Z}$, such that</p>
-\(ed \equiv \frac{1}{2}\left(\frac{1}{4}\phi(N)+1\right)\mod \frac{1}{4}\phi(N),1&lt;d&lt;\frac{1}{4}\phi(N).\)
+<p class="math">\(ed \equiv \frac{1}{2}\left(\frac{1}{4}\phi(N)+1\right)\mod \frac{1}{4}\phi(N),1&lt;d&lt;\frac{1}{4}\phi(N).\)</p>
 <p>The public key is $(a,e,N)$, and the private key is $d$.</p>
 <h4 id="partially-blind-signature-protocol">Partial blind signature protocol</h4>
 <p>Assume that <em>A</em> is a signer who chooses a universal hash function $H_0:\{0,1\}^*\rightarrow\mathbb{Z}^*_\mathbb{N}$ in the system. The public key of <em>A</em> is $(a,e,N,H_0)$, and the private key is $d$.</p>
@@ -201,6 +201,7 @@
 <p class="math">\(info = \text{length of username} \| \text{username}\)</p>
 <p>The blinded component $m$ of the message to be signed is:</p>
 <p class="math">\(m = \text{length of username} \| \text{username} \| \text{password}\)</p>
+<p>The signature $(m,sign(m),c_1)$ is used as this server&#39;s share of the entropy pool.</p>
 <h3 id="prior-successful-login-token">Prior successful login token</h3>
 <p>In the case of a DoS attack against a specific user, we want that user to be affected as little as possible. In order to do this, we award users a special token they can use to bypass any proof-of-work requirements.</p>
 <p>After a user has logged in successfully, they will sign a message using their private key and send it to the authentication server in order to prove that they have successfully decrypted their blob. As part of its response, the server can then issue a n-time-use token, e.g. a ten-time-use token which the client can store persistently and which allows it to log in, even if there is currently a DoS attacks in progress against this account which causes the proof-of-work for logging in to this specific account to be very high.</p>
