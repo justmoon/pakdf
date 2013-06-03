@@ -52,7 +52,10 @@
 <p>&emsp;<b>b)</b>&ensp; Determine which servers provided accurate private values and</p>
 <p>&emsp;<b>c)</b>&ensp; Generate the same secret even if <em>s-k</em> of the servers are no longer available.</p>
 <p>For a) we simply create a list of servers by their hostnames/IPs.</p>
-<p>To accomplish b) we calculate message digests using a message authentication code. We use HMAC-SHA256 using <em>s<sub>i</sub> || m</em> as the key and <code>PAKDF_1_0_0_VALID_ENTROPY</code> as the message. We store these values <em>HMAC<sub>i</sub></em> for all <em>s<sub>i</sub> (1 &lt;= i &lt;= n)</em>.</p>
+<p>To accomplish b) we store a hash of the server&#39;s public values. During
+  login, if the server does not provide the correct public values, it is
+  malicious. After authentication we simply verify the blind signature against
+  the public values to guarantee that it is correct.</p>
 <p>To provide fault tolerance c) we can use a threshold secret sharing scheme such as Shamir's. (Shamir, 1979) First, we calculate masking values <em>c<sub>1</sub></em> to <em>c<sub>k</sub></em>. We then calculate points <em>P<sub>i</sub>(i, s<sub>i</sub> ^ c<sub>i</sub>)</em> and with that solve a polynomial <em>f(x)</em> of order <em>k-1</em>. We then calculate the remaining points <em>P<sub>i</sub>(i, f(i))</em> and consequently the remaining correction values <em>c<sub>n-k</sub> ... c<sub>n</sub></em>.</p>
 <p>$c_i = s_i \oplus f(i)$</p>
 <p>Since values <em>s<sub>i</sub></em> are private, the correction values <em>c<sub>i</sub></em> do not contain any information about the polynomial and are therefore safe to publish. A malicious server can still only compromise their own share of the entropy.</p>
@@ -66,7 +69,7 @@
     // Correction value
     required uint256 correction = 2;
 
-    // Verification digest
+    // Verification digest (hash of server's public values)
     optional uint256 verify = 3;
   }
 
