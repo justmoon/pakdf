@@ -25,7 +25,7 @@
   <div class="row">
     <div class="col col-lg-12">
 <h1 id="peer-assisted-key-derivation-function-pakdf">Peer-Assisted Key Derivation Function (PAKDF)</h1>
-<p class="lead">Stefan Thomas, OpenCoin Inc. &mdash; May 2013</p>
+<p class="lead">Stefan Thomas, OpenCoin Inc. &mdash; May 2013<br><span class="text-muted">Last updated May 10, 2014</span></p>
 <h2 id="abstract">Abstract</h2>
 <blockquote>
 <p>Our protocol combines Chaumian blind signatures and Shamir's Secret Sharing Scheme to create a zero-knowledge, rate limited key derivation protocol involving <em>k-of-n</em> authentication servers. Our scheme is secure against <em>k-1</em> malicious parties and requires <em>k</em> honest parties to succeed.</p>
@@ -34,17 +34,19 @@
 <p>Alice wishes to generate a cryptographically strong key from a relatively weak password. She wants better security against offline attacks than an algorithmic key derivation function (KDF) can provide and wants to have less reliance on third parties than a single-server-based authentication scheme requires.</p>
 <h2 id="entropy-generation-phase">Entropy Generation Phase</h2>
 <p>Alice would like untrusted servers to provide her with repeatable entropy, but she doesn't want these servers to learn any information about her password. To accomplish this, she can use Chaumian blind signatures. (Chaum, 1983)</p>
-<p>First, Alice contacts <em>n</em> entropy servers, sending them each $m' = mr^e$ where <em>m</em> is her low-entropy secret, <em>r</em> is a random value (different for each server contacted) and <em>e</em> is the server's public exponent.</p>
-<p>The entropy servers respond with $s' = (mr^e)^d$ where <em>d</em> is the server's private value.</p>
-<p>Alice then computes each server's share of the entropy pool:</p>
-<p class="math">\(s = r^{-1} (mr^e)^d = m^d\)</p>
+<p>Each entropy server <em>i</em> generates parameters for an RSA cryptosystem and publishes the public exponent <em>e<sub>i</sub></em> and the modulus <em>N<sub>i</sub></em>. It also generates and privately stores a corresponding private exponent <em>d<sub>i</sub></em>.</p>
+<p>Alice contacts any number of these entropy servers, sending them each $m_i' = mr_i^{e_i} \mod{N_i}$ where <em>m</em> is her low-entropy secret and <em>r<sub>i</sub></em> is a random value (unique to each server contacted.)</p>
+<p>Each entropy server <em>i</em> responds with $s_i' = (m_i')^{d_i} \mod{N_i}$ where <em>d<sub>i</sub></em> is the server's private value. Public and private values in RSA satisfy $x \equiv x^{ed} \mod{N}$ allowing Alice to unblind the signature:</p>
+<p class="math">\(s_i = r_i^{-1} (m_i')^{d_i} = r_i^{-1} (mr_i^{e_i})^{d_i} \equiv m^{d_i} \mod{N_i}\)</p>
+<p>The signature value will always be the same (<em>mod N<sub>i</sub></em>) given the same message <em>m</em> and server secret <em>d<sub>i</sub></em>. Therefore Alice can use it as a repeatable server-specific share of her entropy pool.</p>
 <p>The reason that this is more secure than simply performing local key derivation is because the servers can impose an arbitrary performance restriction on the blind signing rounds. For example a server may restrict the number of verifications to one per second per source IP.</p>
 <h3 id="chosen-plaintext-attack">Chosen-plaintext attack</h3>
-<p>A naive implementation of Chaum's protocol is subject to a chosen-plaintext attack. If an attacker can factorize $m$, they need only to run the protocol once per prime factor which is a significant attack for small $m$. To make this infeasible, we recommend adding Michels et al's (1998) padding to $m$:</p>
+<p>A naive implementation of Chaum's protocol is subject to a chosen-plaintext attack. If an attacker can factorize $m$, they need only to run the protocol once per prime factor which is a significant attack for small $m$.</p>
+<p>To make this infeasible, we recommend adding Michels et al's (1998) padding to $m$:</p>
 <p class="math">\(m' = a_1 \| \dotso \| a_t\)</p>
 <p>With</p>
 <p class="math">\(a_1 = m\\a_i = H(a_1 \| \dotso \| a_{i-1})\)</p>
-<p>For $1 &lt; i ≤ t$ and $|m'| = |n|$.</p>
+<p>For $1 &lt; i ≤ t$ and $|m'| = |N|$.</p>
 <h2 id="constructing-public-authentication-metadata">Constructing Public Authentication Metadata</h2>
 <p>Alice now possesses a set of private random values <em>s<sub>i</sub></em> that she can reproduce assuming the servers remain online. However, we would like to introduce fault tolerance such that if <em>n-k</em> of the servers are offline or malicious, she can still reconstruct her key.</p>
 <p>We would like to generate a data package that can safely be made public and that allows us to:</p>
